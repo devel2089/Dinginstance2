@@ -170,54 +170,39 @@ app.post('/stream', (req, res) => {
 
     app.post('/upload', (req, res) => {
         upload(req, res, (err) => {
+           
             // DELETE from the tables 
-        
-            client.query(`DELETE from public."testtable";`)
-            client.query(`DELETE from public."fbai";`)
+
             /*beginning file upload 
             /*postgres from*/
-            
-            if (typeof (req.files['fbai']) != 'undefined' && typeof (req.files['testtable']) != 'undefined') {
-            
+            if (typeof (req.files['fbai']) != "undefined") {
+                client.query(`DELETE from public."fbai";`)
+
                 var fileup1 = streamifier.createReadStream(req.files['fbai'][0].buffer)
-                var fileup2 = streamifier.createReadStream(req.files['testtable'][0].buffer)
-                var streamFile1 = client.query(copyFrom(`COPY fbai FROM STDIN With CSV HEADER DELIMITER ','`));
 
-                fileup1.pipe(streamFile1);
-                var streamFile2 = client.query(copyFrom(`COPY testtable FROM STDIN With CSV HEADER DELIMITER ','`));
-
-                fileup2.pipe(streamFile2);
-                client.query(`DO $$
-                            BEGIN
-                            IF EXISTS (select * from public."Transactions" where "OrderID" = (select "OrderID" from public."testtable" where "OrderID" is not null order by "DateTime" ASC LIMIT 1))
-                            THEN DELETE from public."testtable";
-                            ELSE insert into public."Transactions" select *, current_timestamp from public."testtable";
-                            END IF;
-                            END
-                            $$;
-                            `)
-
-            } else if (typeof (req.files['fbai']) != "undefined") {
-                var fileup1 = streamifier.createReadStream(req.files['fbai'][0].buffer)
-              
                 var streamFile1 = client.query(copyFrom(`COPY fbai FROM STDIN With CSV HEADER DELIMITER ','`));
                 fileup1.pipe(streamFile1);
-            } else if (typeof (req.files['testtable']) != "undefined") {
-                var fileup2 = streamifier.createReadStream(req.files['testtable'][0].buffer)
-               
-                var streamFile2 = client.query(copyFrom(`COPY testtable FROM STDIN With CSV HEADER DELIMITER ','`));
-                fileup2.pipe(streamFile2);
-                client.query(`DO $$
-                            BEGIN
-                            IF EXISTS (select * from public."Transactions" where "OrderID" = (select "OrderID" from public."testtable" where "OrderID" is not null order by "DateTime" ASC LIMIT 1))
-                            THEN DELETE from public."testtable";
-                            ELSE insert into public."Transactions" select *, current_timestamp from public."testtable";
-                            END IF;
-                            END
-                            $$;
-                            `)
+                client.query(`insert into public.fbaidate values (current_timestamp);`);
             }
+            if (typeof (req.files['testtable']) != "undefined") {
+                client.query(`DELETE from public."testtable";`)
 
+                var fileup2 = streamifier.createReadStream(req.files['testtable'][0].buffer)
+
+                var streamFile2 = client.query(copyFrom(`COPY testtable FROM STDIN With CSV HEADER DELIMITER ','`));
+                fileup2.pipe(streamFile2);
+                // check for transactions
+                client.query(`DO 
+                            $$
+                            BEGIN
+                            IF EXISTS (select * from public."Transactions" where to_char("DateTime", 'YYYY-MM-DD') in 
+                                    (select to_char("DateTime", 'YYYY-MM-DD') from public."testtable" where "OrderID" is not null order by "DateTime" asc) LIMIT 1)
+                            THEN DELETE from public."testtable";
+                            ELSE insert into public."Transactions" select *, current_timestamp from public."testtable";
+                            END IF;
+                            END
+                            $$;`)
+            }
 
             if (err) {
                 res.redirect('./', {
